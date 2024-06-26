@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wireguard"
+version = "0.1.0"
+dependencies = [
+    "pynacl",
+    "cffi"
+]
+requires-python = ">=3.8"
+authors = [
+    {name = "Nadeem Douba", email = "ndouba@gmail.com"}
+]
+maintainers = [
+    {name = "Nadeem Douba", email = "ndouba@gmail.com"}
+]
+description = "A Python wrapper for the WireGuard embeddable library"
+readme = "README.md"
+license = {file = "LICENSE.txt"}
+keywords = ["wireguard", "vpn", "embeddable", "wgtools", "wireguard-tools"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only"
+]
+
+
+[tool.hatch.build.hooks.custom]
+path = "build.py"
+
+[tool.hatch.build.targets.wheel.force-include]
+"libwg/libwg.so" = "wireguard/libwg.so"
+
+[project.urls]
+Homepage = "https://github.com/allfro/python-wireguard"
+Documentation = "https://github.com/allfro/python-wireguard"
+Repository = "https://github.com/allfro/python-wireguard.git"
+"Bug Tracker" = "https://github.com/allfro/python-wireguard/issues"
+Changelog = "https://github.com/allfro/python-wireguard/blob/master/CHANGELOG.md"
