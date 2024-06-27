@@ -5,7 +5,7 @@ from ctypes import *
 from ctypes.util import find_library
 from datetime import datetime
 from ipaddress import ip_network, IPv4Network, IPv6Network, ip_address, IPv4Address, IPv6Address
-from typing import List, Generator
+from typing import List, Generator, Tuple
 
 from nacl.encoding import Base64Encoder
 from nacl.public import PrivateKey, PublicKey
@@ -295,7 +295,7 @@ class AllowedIP:
         return self._pointer
 
     def __eq__(self, other):
-        return isinstance(self, AllowedIP) and self.address == other.address
+        return isinstance(other, AllowedIP) and self.address == other.address
 
     def __repr__(self):
         return f'<{self.__class__.__name__} cidr="{self.address}">'
@@ -401,7 +401,7 @@ class WireGuardEndpoint:
         return f'<{self.__class__.__name__} endpoint="{self}">'
 
     def __eq__(self, other):
-        return isinstance(self, WireGuardEndpoint) and self.address == other.address and self.port == other.port
+        return isinstance(other, WireGuardEndpoint) and self.address == other.address and self.port == other.port
 
     def __str__(self):
         return f'{self.address}:{self.port}'
@@ -448,10 +448,11 @@ class WireGuardPeer:
         return WireGuardEndpoint(self._pointer.contents.endpoint)
 
     @endpoint.setter
-    def endpoint(self, value: WireGuardEndpoint):
+    def endpoint(self, value: WireGuardEndpoint | Tuple[str, int]):
         if not value:
             memset(byref(self._pointer.contents.endpoint), 0, sizeof(wg_endpoint))
         else:
+            value = value if isinstance(value, WireGuardEndpoint) else WireGuardEndpoint.from_address_and_port(*value)
             memmove(byref(self._pointer.contents.endpoint), byref(value.endpoint), sizeof(wg_endpoint))
 
     @property
@@ -546,6 +547,8 @@ class WireGuardPeer:
             self.first_allowed_ip = self.last_allowed_ip = None
             return
 
+        value = [v if isinstance(v, AllowedIP) else AllowedIP.from_ip_network(v) for v in value]
+
         self.first_allowed_ip = value[0]
         self.last_allowed_ip = value[-1]
 
@@ -568,8 +571,8 @@ class WireGuardPeer:
     def from_config(
             public_key: PublicKey,
             preshared_key: PrivateKey = None,
-            endpoint: WireGuardEndpoint = None,
-            allowed_ips: List[AllowedIP] = None,
+            endpoint: WireGuardEndpoint | Tuple[str, int] = None,
+            allowed_ips: List[AllowedIP | str] = None,
             persistent_keepalive_interval: int = 0,
 
     ):
@@ -593,8 +596,9 @@ class WireGuardDevice:
     def __init__(self, ptr: wg_device_p = None):
         self._pointer = ptr or wg_device_p()
 
-    def __bytes__(self):
-        return self._pointer.contents.name
+    @property
+    def name(self):
+        return self._pointer.contents.name.decode('utf8')
 
     @property
     def ifindex(self) -> int:
@@ -603,14 +607,6 @@ class WireGuardDevice:
     @property
     def public_key(self) -> PublicKey:
         return PublicKey(bytes(self._pointer.contents.public_key))
-
-    @public_key.setter
-    def public_key(self, value):
-        if value:
-            self.flags |= WGDeviceFlags.WGDEVICE_HAS_PUBLIC_KEY
-            memmove(self._pointer.contents.public_key, value.encode(), 32)
-        else:
-            memset(self._pointer.contents.public_key, 0, 32)
 
     @property
     def private_key(self) -> PrivateKey:
@@ -623,10 +619,8 @@ class WireGuardDevice:
         if value:
             self.flags |= WGDeviceFlags.WGDEVICE_HAS_PRIVATE_KEY | WGDeviceFlags.WGDEVICE_HAS_PUBLIC_KEY
             memmove(self._pointer.contents.private_key, value.encode(), 32)
-            memmove(self._pointer.contents.public_key, value.public_key.encode(), 32)
         else:
             memset(self._pointer.contents.private_key, 0, 32)
-            memset(self._pointer.contents.public_key, 0, 32)
 
     @property
     def flags(self) -> int:
@@ -646,6 +640,7 @@ class WireGuardDevice:
             self.flags |= WGDeviceFlags.WGDEVICE_HAS_FWMARK
             self._pointer.contents.fwmark = value
         else:
+            self.flags ^= WGDeviceFlags.WGDEVICE_HAS_FWMARK
             self._pointer.contents.fwmark = 0
 
     @property
@@ -658,6 +653,7 @@ class WireGuardDevice:
             self.flags |= WGDeviceFlags.WGDEVICE_HAS_LISTEN_PORT
             self._pointer.contents.listen_port = value
         else:
+            self.flags ^= WGDeviceFlags.WGDEVICE_HAS_LISTEN_PORT
             self._pointer.contents.listen_port = 0
 
     @property
@@ -666,7 +662,7 @@ class WireGuardDevice:
 
     @first_peer.setter
     def first_peer(self, value: WireGuardPeer):
-        self._pointer.contents.first_peer = value.pointer
+        self._pointer.contents.first_peer = value.pointer if value else None
 
     @property
     def last_peer(self) -> WireGuardPeer:
@@ -674,7 +670,7 @@ class WireGuardDevice:
 
     @last_peer.setter
     def last_peer(self, value: WireGuardPeer):
-        self._pointer.contents.last_peer = value.pointer
+        self._pointer.contents.last_peer = value.pointer if value else None
 
     def __del__(self):
         if self._pointer:
@@ -747,18 +743,22 @@ def list_device_names() -> List[str]:
     return [d.decode('utf8') for d in bytes(b).rstrip(b'\x00').split(b'\x00')]
 
 
-def del_device(device_name: WireGuardDevice | str) -> None:
-    wg_del_device(bytes(device_name, 'utf8'))
+def del_device(device: WireGuardDevice | str) -> None:
+    if isinstance(device, WireGuardDevice):
+        device = device.name
+    wg_del_device(bytes(device, 'utf8'))
 
 
-def add_device(device_name) -> WireGuardDevice:
-    wg_add_device(bytes(device_name, 'utf8'))
-    return get_device(device_name)
+def add_device(device) -> WireGuardDevice:
+    wg_add_device(bytes(device, 'utf8'))
+    return get_device(device)
 
 
-def get_device(device_name) -> WireGuardDevice:
+def get_device(device: WireGuardDevice | str) -> WireGuardDevice:
+    if isinstance(device, WireGuardDevice):
+        device = device.name
     dev = wg_device_p()
-    wg_get_device(byref(dev), bytes(device_name, 'utf8'))
+    wg_get_device(byref(dev), bytes(device, 'utf8'))
     return WireGuardDevice(dev)
 
 

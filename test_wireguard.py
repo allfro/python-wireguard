@@ -8,20 +8,25 @@ import wireguard as wg
 
 class TestWireGuardMethods(unittest.TestCase):
 
+    def setUp(self):
+        self.device = wg.add_device('test0')
+
+    def tearDown(self):
+        if self.device:
+            wg.del_device(self.device)
+            self.device = None
+
     def test_add_device(self):
-        w = wg.add_device('wg0')
-        self.assertIsInstance(w, wg.WireGuardDevice)
-        self.assertIn('wg0', wg.list_device_names())
-        wg.del_device('wg0')
+        self.assertIsInstance(self.device, wg.WireGuardDevice)
+        self.assertIn('test0', wg.list_device_names())
 
     def test_list_device_names(self):
-        self.assertTrue(isinstance(wg.list_device_names(), list))
+        self.assertListEqual(['test0'], wg.list_device_names())
 
     def test_del_device(self):
-        wg.add_device('wg0')
-        self.assertIn('wg0', wg.list_device_names())
-        wg.del_device('wg0')
-        self.assertNotIn('wg0', wg.list_device_names())
+        self.assertIn('test0', wg.list_device_names())
+        self.tearDown()
+        self.assertNotIn('test0', wg.list_device_names())
 
 
 class TestAllowedIPMethods(unittest.TestCase):
@@ -242,7 +247,7 @@ class TestWireGuardPeerMethods(unittest.TestCase):
     def test_new_wireguard_public_key_set_null(self):
         wgp = wg.WireGuardPeer.from_config(wg.PrivateKey.generate().public_key)
         wgp.public_key = None
-        self.assertEqual(wg.PublicKey(b'\x00'*32), wgp.public_key)
+        self.assertEqual(wg.PublicKey(b'\x00' * 32), wgp.public_key)
 
     def test_new_wireguard_preshared_key_set(self):
         psk = wg.PrivateKey.generate()
@@ -259,7 +264,7 @@ class TestWireGuardPeerMethods(unittest.TestCase):
     def test_new_wireguard_preshared_key_set_null(self):
         wgp = wg.WireGuardPeer.from_config(wg.PrivateKey.generate().public_key, wg.PrivateKey.generate())
         wgp.preshared_key = None
-        self.assertEqual(wg.PrivateKey(b'\x00'*32), wgp.preshared_key)
+        self.assertEqual(wg.PrivateKey(b'\x00' * 32), wgp.preshared_key)
 
     def test_set_endpoint_null(self):
         wgp = wg.WireGuardPeer.from_config(
@@ -329,7 +334,7 @@ class TestWireGuardPeerMethods(unittest.TestCase):
         wgp.add_allowed_ip(wg.AllowedIP.from_ip_network('192.168.3.0/24'))
 
         self.assertListEqual(
-        [wg.AllowedIP.from_ip_network('192.168.3.0/24')],
+            [wg.AllowedIP.from_ip_network('192.168.3.0/24')],
             list(wgp.allowed_ips)
         )
         self.assertEqual(wgp.first_allowed_ip, wg.AllowedIP.from_ip_network('192.168.3.0/24'))
@@ -338,16 +343,15 @@ class TestWireGuardPeerMethods(unittest.TestCase):
     def test_fetch_empty_allowed_ips(self):
         wgp = wg.WireGuardPeer.from_config(None)
         self.assertListEqual(
-        [],
+            [],
             list(wgp.allowed_ips)
         )
-
 
     def test_set_empty_allowed_ips(self):
         wgp = wg.WireGuardPeer.from_config(None, allowed_ips=[wg.AllowedIP.from_ip_network('192.168.3.0/24')])
         wgp.allowed_ips = []
         self.assertListEqual(
-        [],
+            [],
             list(wgp.allowed_ips)
         )
 
@@ -365,7 +369,124 @@ class TestWireGuardPeerMethods(unittest.TestCase):
 
 
 class TestWireGuardDeviceMethods(unittest.TestCase):
-    pass
+
+    def setUp(self):
+        self.device = wg.add_device("test0")
+
+    def tearDown(self):
+        wg.del_device(self.device)
+        self.device = None
+
+    def applyChanges(self):
+        self.device.save()
+        self.device = wg.get_device(self.device)
+
+    def assertFlagSet(self, flag):
+        self.assertEqual(
+            flag,
+            self.device.flags & flag
+        )
+
+    def test_get_name(self):
+        self.assertEqual('test0', self.device.name)
+
+    def test_set_private_key(self):
+        priv = wg.PrivateKey.generate()
+        self.device.private_key = priv
+        self.applyChanges()
+        self.assertEqual(priv, self.device.private_key)
+        self.assertEqual(priv.public_key, self.device.public_key)
+        self.assertFlagSet(wg.WGDeviceFlags.WGDEVICE_HAS_PRIVATE_KEY | wg.WGDeviceFlags.WGDEVICE_HAS_PUBLIC_KEY)
+
+    def test_get_ifindex(self):
+        self.assertTrue(self.device.ifindex)
+
+    def test_set_private_key_null(self):
+        self.device.private_key = wg.PrivateKey.generate()
+        self.applyChanges()
+        self.device.private_key = None
+        self.applyChanges()
+        self.assertEqual(wg.PrivateKey(b'\x00'*32), self.device.private_key)
+        self.assertEqual(wg.PublicKey(b'\x00'*32), self.device.public_key)
+
+    def test_get_fwmark(self):
+        self.assertFalse(self.device.fwmark)
+
+    def test_set_fwmark(self):
+        self.device.fwmark = 32
+        self.applyChanges()
+        self.assertEqual(32, self.device.fwmark)
+        self.device.fwmark = 0
+        self.applyChanges()
+        self.assertEqual(0, self.device.fwmark)
+
+    def test_get_listen_port(self):
+        self.assertFalse(self.device.listen_port)
+
+    def test_set_listen_port(self):
+        self.device.listen_port = 32
+        self.applyChanges()
+        self.assertEqual(32, self.device.listen_port)
+        self.device.listen_port = 0
+        self.applyChanges()
+        self.assertEqual(0, self.device.listen_port)
+
+    def test_add_peer(self):
+        pub1 = wg.PublicKey(wg.random(32))
+        self.device.add_peer(wg.WireGuardPeer.from_config(pub1))
+        self.applyChanges()
+        self.assertEqual(pub1, list(self.device.peers)[0].public_key)
+
+        pub2 = wg.PublicKey(wg.random(32))
+        self.device.add_peer(wg.WireGuardPeer.from_config(pub2))
+        self.applyChanges()
+        self.assertEqual(pub2, list(self.device.peers)[1].public_key)
+
+    def test_set_peers(self):
+        pub1 = wg.PublicKey(wg.random(32))
+        pub2 = wg.PublicKey(wg.random(32))
+        self.device.peers = [wg.WireGuardPeer.from_config(pub1), wg.WireGuardPeer.from_config(pub2)]
+        self.applyChanges()
+        self.assertEqual([pub1, pub2], list(p.public_key for p in self.device.peers))
+
+    def test_set_empty_peers(self):
+        pub1 = wg.PublicKey(wg.random(32))
+        pub2 = wg.PublicKey(wg.random(32))
+        self.device.peers = [wg.WireGuardPeer.from_config(pub1)]
+        self.applyChanges()
+        self.assertEqual([pub1], list(p.public_key for p in self.device.peers))
+        self.device.peers = [wg.WireGuardPeer.from_config(pub1), wg.WireGuardPeer.from_config(pub2)]
+        self.applyChanges()
+        self.assertEqual([pub1, pub2], list(p.public_key for p in self.device.peers))
+        self.device.peers = []
+        self.applyChanges()
+        self.assertFalse(list(self.device.peers))
+
+    def test_sub_structure_integrity(self):
+        pub = wg.PublicKey(wg.random(32))
+        psk = wg.PrivateKey.generate()
+        self.device.add_peer(
+            wg.WireGuardPeer.from_config(
+                pub,
+                psk,
+        ('192.168.0.1', 443),
+                [
+                    '192.168.0.0/24', '192.168.1.0/24'
+                ],
+                21
+            )
+        )
+
+        self.applyChanges()
+        peer = next(self.device.peers)
+        self.assertEqual(pub, peer.public_key)
+        self.assertEqual(psk, peer.preshared_key)
+        self.assertEqual('192.168.0.1:443', str(peer.endpoint))
+        self.assertListEqual(
+            [wg.AllowedIP.from_ip_network('192.168.0.0/24'), wg.AllowedIP.from_ip_network('192.168.1.0/24')],
+            list(peer.allowed_ips)
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
