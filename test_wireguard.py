@@ -28,6 +28,29 @@ class TestWireGuardMethods(unittest.TestCase):
         self.tearDown()
         self.assertNotIn('test0', wg.list_device_names())
 
+    def test_get_invalid_device(self):
+        self.assertRaises(OSError, lambda: wg.get_device('test1'))
+
+    def test_generate_private_key(self):
+        for i in range(1000):
+            k = wg.generate_private_key()
+            b = k.encode()
+            self.assertIsInstance(k, wg.PrivateKey)
+            self.assertEqual(32, len(b))
+            self.assertNotEqual(b'\x00'*32, b)
+            self.assertLessEqual(b[31], 127)
+            self.assertGreaterEqual(b[31], 64)
+            self.assertLessEqual(b[0], 248)
+            if b[0]:
+                self.assertGreaterEqual(b[0], 8)
+
+    def test_generate_preshared_key(self):
+        k = wg.generate_preshared_key()
+        self.assertIsInstance(k, wg.PrivateKey)
+        self.assertEqual(32, len(k.encode()))
+        self.assertNotEqual(b'\x00'*32, k.encode())
+
+
 
 class TestAllowedIPMethods(unittest.TestCase):
 

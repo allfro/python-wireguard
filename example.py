@@ -1,17 +1,17 @@
-import wireguard as wg
+from wireguard import random, generate_private_key, PrivateKey, PublicKey, WireGuardPeer, add_device
 
-device = wg.add_device('test0')
+device = add_device('test0')
 
-pub = wg.PublicKey(wg.random(32))
-psk = wg.PrivateKey.generate()
-device.private_key = wg.generate_private_key()
+pub = PublicKey(random(32))
+psk = PrivateKey.generate()
+device.private_key = generate_private_key()
 device.add_peer(
-    wg.WireGuardPeer.from_config(
+    WireGuardPeer.from_config(
         pub,
         psk,
-        ('192.168.0.1', 443),
+        ('fe08::1', 443),
         [
-            '192.168.0.0/24', '192.168.1.0/24'
+            '192.168.0.0/24', 'fe08::/24'
         ],
         21
     )
