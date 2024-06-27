@@ -569,7 +569,7 @@ class WireGuardPeer:
 
     @staticmethod
     def from_config(
-            public_key: PublicKey,
+            public_key: PublicKey | None,
             preshared_key: PrivateKey = None,
             endpoint: WireGuardEndpoint | Tuple[str, int] = None,
             allowed_ips: List[AllowedIP | str] = None,
