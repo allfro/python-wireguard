@@ -32,9 +32,9 @@ __all__ = [
 ]
 
 try:
-    libwg = CDLL('./libwg.so')
+    libwg = CDLL(os.path.join(os.path.dirname(__file__), './libwg.so'))
 except OSError:
-    libwg = CDLL('./libwg/libwg.so')
+    libwg = CDLL(os.path.join(os.path.dirname(__file__), '../libwg/libwg.so'))
 
 libc = CDLL(find_library('c'))
 
@@ -766,7 +766,7 @@ def generate_private_key() -> PrivateKey:
     secret = bytearray(random(PrivateKey.SIZE))
     secret[0] &= 248
     secret[31] = (secret[31] & 127) | 64
-    return PrivateKey(secret)
+    return PrivateKey(bytes(secret))
 
 
 def generate_preshared_key() -> PrivateKey:
