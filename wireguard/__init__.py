@@ -31,7 +31,10 @@ __all__ = [
     'WGPeerFlags'
 ]
 
-libwg = CDLL('./libwg.so')
+try:
+    libwg = CDLL('./libwg.so')
+except OSError:
+    libwg = CDLL('./libwg/libwg.so')
 
 libc = CDLL(find_library('c'))
 
@@ -239,7 +242,7 @@ class AllowedIP:
         return aip
 
     @property
-    def family(self) -> int:
+    def family(self) -> int | None:
         return self._pointer.contents.family
 
     @family.setter
@@ -255,6 +258,7 @@ class AllowedIP:
             address = socket.inet_ntop(socket.AF_INET6, bytes(self._pointer.contents.addr.ip6.s6_addr))
         else:
             return None
+
         return ip_network(f'{address}/{self._pointer.contents.cidr}', strict=False)
 
     @address.setter
@@ -294,7 +298,7 @@ class AllowedIP:
         return isinstance(self, AllowedIP) and self.address == other.address
 
     def __repr__(self):
-        return f'<AllowedIP cidr="{self.address}">'
+        return f'<{self.__class__.__name__} cidr="{self.address}">'
 
     def __str__(self):
         return f'{self.address}'
@@ -333,7 +337,6 @@ class WireGuardEndpoint:
             return ip_address(socket.inet_ntop(socket.AF_INET, struct.pack('I', self.endpoint.addr4.sin_addr.s_addr)))
         elif family == socket.AF_INET6:
             return ip_address(socket.inet_ntop(socket.AF_INET6, bytes(self.endpoint.addr6.sin6_addr.s6_addr)))
-        return None
 
     @address.setter
     def address(self, value: IPv6Address | IPv4Address | str) -> None:
@@ -355,7 +358,6 @@ class WireGuardEndpoint:
             return socket.ntohs(self.endpoint.addr4.sin_port)
         elif family == socket.AF_INET6:
             return socket.ntohs(self.endpoint.addr6.sin6_port)
-        return None
 
     @port.setter
     def port(self, value) -> None:
@@ -365,14 +367,13 @@ class WireGuardEndpoint:
         elif family == socket.AF_INET6:
             self.endpoint.addr6.sin6_port = socket.htons(value)
         else:
-            raise ValueError(f'Invalid socket family: {family}')
+            raise ValueError(f'Unsupported socket family: {family}')
 
     @property
     def flow_info(self) -> int:
         family = self.family
         if family == socket.AF_INET6:
             return self.endpoint.addr6.sin6_flowinfo
-        return None
 
     @flow_info.setter
     def flow_info(self, value) -> None:
@@ -380,14 +381,13 @@ class WireGuardEndpoint:
         if family == socket.AF_INET6:
             self.endpoint.addr6.sin6_flowinfo = value
         else:
-            raise ValueError(f'Invalid socket family: {family}')
+            raise ValueError(f'Unsupported socket family: {family}')
 
     @property
     def scope_id(self) -> int:
         family = self.family
         if family == socket.AF_INET6:
             return self.endpoint.addr6.sin6_scope_id
-        return None
 
     @scope_id.setter
     def scope_id(self, value) -> None:
@@ -395,7 +395,7 @@ class WireGuardEndpoint:
         if family == socket.AF_INET6:
             self.endpoint.addr6.sin6_scope_id = value
         else:
-            raise ValueError(f'Invalid socket family: {family}')
+            raise ValueError(f'Unsupported socket family: {family}')
 
     def __repr__(self):
         return f'<{self.__class__.__name__} endpoint="{self}">'
@@ -410,7 +410,6 @@ class WireGuardEndpoint:
 class WireGuardPeer:
     def __init__(self, ptr: wg_peer_p = None):
         self._pointer = ptr or wg_peer_p()
-        self._needs_free = bool(self._pointer._b_needsfree_)
 
     @property
     def flags(self) -> PublicKey:
@@ -451,14 +450,14 @@ class WireGuardPeer:
     @endpoint.setter
     def endpoint(self, value: WireGuardEndpoint):
         if not value:
-            memset(self._pointer.contents.endpoint, 0, sizeof(wg_endpoint))
+            memset(byref(self._pointer.contents.endpoint), 0, sizeof(wg_endpoint))
         else:
             memmove(byref(self._pointer.contents.endpoint), byref(value.endpoint), sizeof(wg_endpoint))
 
     @property
     def last_handshake_time(self):
         t = self._pointer.contents.last_handshake_time
-        total_seconds = t.tv_sec + (t.tv_usec / 1000000.0)
+        total_seconds = t.tv_sec + (t.tv_nsec / 1e9)
         return datetime.fromtimestamp(total_seconds)
 
     @property
@@ -733,14 +732,14 @@ def list_device_names() -> List[str]:
     buf = wg_list_device_names()
     b = []
     i = 0
-    l = -1
+    last_byte = -1
 
     while True:
         c = buf[i]
-        if not c and not l:
+        if not c and (not last_byte or not i):
             break
         b.append(c)
-        l = c
+        last_byte = c
         i += 1
 
     libc.free(buf)
