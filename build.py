@@ -9,4 +9,4 @@ class MakeHook(BuildHookInterface):
         build_dir = os.path.join(self.root, 'libwg')
 
         # Run the Makefile
-        subprocess.run(['make'], cwd=build_dir, check=True)
+        subprocess.run([os.path.join(os.path.dirname(__file__), 'make')], cwd=build_dir, check=True)
