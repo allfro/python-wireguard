@@ -229,7 +229,7 @@ wg_free_device.argtypes = (wg_device_p,)
 wg_free_device.restype = None
 
 wg_list_device_names = libwg.wg_list_device_names
-wg_list_device_names.restype = POINTER(c_ubyte)
+wg_list_device_names.restype = c_void_p
 
 
 class AllowedIP:
