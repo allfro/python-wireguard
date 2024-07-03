@@ -45,6 +45,10 @@ calloc = libc.calloc
 calloc.argtypes = (c_size_t, c_size_t)
 calloc.restype = c_void_p
 
+free = libc.free
+free.argtypes = (c_void_p, )
+free.restype = None
+
 
 def errcheck(ret, func, args):
     if ret:
@@ -726,21 +730,19 @@ class WireGuardDevice:
 
 def list_device_names() -> List[str]:
     buf = wg_list_device_names()
-    b = []
-    i = 0
-    last_byte = -1
-
+    names = []
+    offset = 0
+    
     while True:
-        c = buf[i]
-        if not c and (not last_byte or not i):
+        n = string_at(buf + offset)
+        offset += len(n) + 1
+        if not n:
             break
-        b.append(c)
-        last_byte = c
-        i += 1
+        names.append(n.decode('utf8'))
 
-    libc.free(buf)
+    free(buf)
 
-    return [d.decode('utf8') for d in bytes(b).rstrip(b'\x00').split(b'\x00')]
+    return names
 
 
 def del_device(device: WireGuardDevice | str) -> None:
